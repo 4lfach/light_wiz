@@ -1,3 +1,9 @@
+SONG_PATH = "./music/Nirvana.mp3"
+CHUNK_MS = 100
+MIN_BRIGHTNESS = 10  
+MAX_BRIGHTNESS = 255
+NUMBER_OF_BULBS = 20
+
 ip_mapping = {
     1: "192.168.8.150",
     2: "192.168.8.213",

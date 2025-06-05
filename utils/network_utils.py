@@ -2,12 +2,36 @@ import asyncio
 import re
 from pywizlight import discovery, wizlight, PilotBuilder
 
-async def find_light_bulbs():
-    print("Looking for bulbs...")
+import asyncio
 
-    bulbs = await discovery.discover_lights(broadcast_space="192.168.8.255")
-    print(f"Found bulbs: {bulbs}")
-    return bulbs
+from utils.constants import NUMBER_OF_BULBS
+
+async def find_light_bulbs():
+    print("Starting to look for bulbs...")
+    
+    while True:
+        try:
+            bulbs = await asyncio.wait_for(
+                discovery.discover_lights(broadcast_space="192.168.8.255"),
+                timeout=10
+            )
+            if len(bulbs) != NUMBER_OF_BULBS:
+                print(f"Found {len(bulbs)} bulbs, expected {NUMBER_OF_BULBS}. Retrying...")
+                await asyncio.sleep(1)
+                continue
+        except asyncio.TimeoutError:
+            print("Timed out waiting for bulbs, retrying...")
+            continue
+        
+        if bulbs:
+            for bulb in bulbs:
+                await bulb.turn_on(PilotBuilder(brightness=10))
+            await asyncio.sleep(1)
+            for bulb in bulbs:
+                await bulb.turn_off()
+            print(f"Found bulbs: {bulbs}")
+            return bulbs
+
 
 
 async def get_ip_mac_map_filtered(prefix="cc"):
