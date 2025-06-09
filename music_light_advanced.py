@@ -7,7 +7,8 @@ import numpy as np
 from utils.network_utils import find_light_bulbs
 
 freq_ranges = [(0, 250), (251, 500), (501, 2000), (2001, 4000), (4001, 8000)]
-CHUNK_MS = 1000
+CHUNK_MS = 1000  # Music is still processed in 1-second chunks for analysis
+LIGHT_UPDATE_INTERVAL = 0.78  # Adjusted to account for 0.23s bulb delay (1s - 0.23s ≈ 0.77s, rounded to 0.75s)
 MUSIC_FILES = ["./music/test3.mp3"]
 # MUSIC_FILES = ["./music/test0.mp3", "./music/test1.mp3", "./music/test2.mp3"]
 
@@ -93,7 +94,7 @@ def pre_calculate_power_mapping(audio_file):
         lower_threshold (float)
     """
     song = AudioSegment.from_mp3(audio_file)
-    chunks = list(song[::CHUNK_MS])  # split into 1 second chunks
+    chunks = list(song[::CHUNK_MS])  # split into 1 second chunks for analysis
     power_mapping = {}
     all_power_values = []
 
@@ -121,8 +122,8 @@ def pre_calculate_power_mapping(audio_file):
     all_power_values.sort()
     n = len(all_power_values)
 
-    lower_index = max(0, int(n * 0.20) - 1)
-    upper_index = min(n - 1, int(n * 0.80))
+    lower_index = max(0, int(n * 0.30) - 1)
+    upper_index = min(n - 1, int(n * 0.70))
 
     lower_threshold = all_power_values[lower_index] if n > 0 else 0
     upper_threshold = all_power_values[upper_index] if n > 0 else 0
@@ -134,12 +135,23 @@ async def play_song(song):
     Play song asynchronously, non-blocking.
     Returns the play object (simpleaudio.PlayObject).
     """
+
     play_obj = simpleaudio.play_buffer(
         song.raw_data,
         num_channels=song.channels,
         bytes_per_sample=song.sample_width,
         sample_rate=song.frame_rate
     )
+    return play_obj
+
+async def delayed_music_playback(song, delay_seconds):
+    """
+    Play the song after a specified delay.
+    """
+    print(f"Waiting {delay_seconds} seconds before starting music...")
+    await asyncio.sleep(delay_seconds)
+    play_obj = await play_song(song)
+    print("Music started.")
     return play_obj
 
 async def main():
@@ -153,13 +165,18 @@ async def main():
     for song_path in MUSIC_FILES:
         power_mapping, upper_threshold, lower_threshold = pre_calculate_power_mapping(song_path)
         print(f"Pre-calculated power mapping for {len(power_mapping)} chunks.")
-        print(f"Upper Threshold (lowest of highest 20%): {upper_threshold:.2f} dB")
-        print(f"Lower Threshold (highest of lowest 20%): {lower_threshold:.2f} dB")
+        print(f"Upper Threshold (lowest of highest 30%): {upper_threshold:.2f} dB")
+        print(f"Lower Threshold (highest of lowest 30%): {lower_threshold:.2f} dB")
 
         song = AudioSegment.from_mp3(song_path)
-        play_obj = await play_song(song)
+        
+        # Start the music playback with a 5-second delay as a separate task
+        music_task = asyncio.create_task(delayed_music_playback(song, 5))
 
+        # Process all light updates immediately with adjusted interval to account for bulb delay
         for chunk_index in range(len(power_mapping)):
+            print(f"Processing chunk {chunk_index + 1}/{len(power_mapping)}")
+
             power_values = power_mapping[chunk_index]
             light_tasks = [
                 set_light_by_power_and_range(mapped_bulbs, power_db, freq_range, upper_threshold, lower_threshold)
@@ -167,8 +184,10 @@ async def main():
             ]
             # Run bulb updates concurrently per chunk
             await asyncio.gather(*light_tasks)
-            await asyncio.sleep(CHUNK_MS / 1000)  # sync timing with music chunk duration
+            await asyncio.sleep(LIGHT_UPDATE_INTERVAL)  # Adjusted interval for light updates (0.75s)
 
+        # Wait for the music task to complete if it hasn't already
+        play_obj = await music_task
         play_obj.stop()  # Stop playback explicitly when done
 
     # Turn all bulbs off at end
@@ -179,5 +198,5 @@ async def main():
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
-    loop.close()
+
 
