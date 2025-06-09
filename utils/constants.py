@@ -36,3 +36,42 @@ def map_light_bulbs(bulbs):
                 mapped_bulbs.append((number, bulb))
                 break
     return mapped_bulbs
+
+
+
+async def main():
+    bulbs = await find_light_bulbs()
+    if not bulbs:
+        print("No bulbs found.")
+        return
+    
+    mapped_bulbs = map_light_bulbs(bulbs)
+
+    for song_path in MUSIC_FILES:
+        power_mapping, upper_threshold, lower_threshold = pre_calculate_power_mapping(song_path)
+        print(f"Pre-calculated power mapping for {len(power_mapping)} chunks.")
+        print(f"Upper Threshold (lowest of highest 20%): {upper_threshold:.2f} dB")
+        print(f"Lower Threshold (highest of lowest 20%): {lower_threshold:.2f} dB")
+
+        song = AudioSegment.from_mp3(song_path)
+        play_obj = await play_song(song)
+
+        for chunk_index in range(len(power_mapping)):
+            power_values = power_mapping[chunk_index]
+            light_tasks = [
+                set_light_by_power_and_range(mapped_bulbs, power_db, freq_range, upper_threshold, lower_threshold)
+                for freq_range, power_db in power_values.items()
+            ]
+            # Run bulb updates concurrently per chunk
+            await asyncio.gather(*light_tasks)
+            await asyncio.sleep(CHUNK_MS / 1000)  # sync timing with music chunk duration
+
+        play_obj.stop()  # Stop playback explicitly when done
+
+    # Turn all bulbs off at end
+    off_tasks = [bulb.turn_off() for bulb in bulbs]
+    await asyncio.gather(*off_tasks)
+    print("Show finished!")
+
+if __name__ == "__main__":
+    asyncio.run(main())

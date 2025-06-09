@@ -25,7 +25,7 @@ async def find_light_bulbs():
         
         if bulbs:
             for bulb in bulbs:
-                await bulb.turn_on(PilotBuilder(brightness=10))
+                await bulb.turn_on(PilotBuilder(brightness=1))
             await asyncio.sleep(1)
             for bulb in bulbs:
                 await bulb.turn_off()
